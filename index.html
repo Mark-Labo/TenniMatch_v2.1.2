@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>テニス組合せ＆ランキング管理 v2.1.2</title>
+  <title>WTCテニス組合せ＆ランキング管理 v1.2 (room対応)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;600;700&display=swap" rel="stylesheet">
   <style>
@@ -22,11 +22,13 @@
     .match-card { border-radius:14px; padding: 12px; margin: 10px 16px; box-shadow: 0 6px 20px rgba(0,0,0,0.15); color: #333; }
     .match-title { font-weight:700; margin-bottom: 8px; }
     .court-name { font-weight:600; color: #2a5298; margin-top: 12px; margin-bottom: 4px; }
-    .pair-row { display: flex; justify-content: space-between; align-items: center; margin:6px 0; }
+    .pair-row { display: flex; justify-content: space-between; align-items: center; margin:6px 0; gap:8px; }
     .pair { font-weight:500; }
     .vs { text-align:center; font-size: 12px; color: #666; margin: 2px 0; }
-    .score { width: 48px; height: 36px; font-size: 16px; text-align: center; border: 2px solid #2a5298; border-radius: 8px; background: #f0f4ff; }
-    .score:focus { outline:none; box-shadow: 0 0 5px rgba(42,82,152,0.6); }
+    .score-display { width:40px; height:36px; line-height:36px; text-align:center; border-radius:6px; background:#fff; border:1px solid #ccc; }
+    .score-input { width:48px; height:36px; font-size:16px; text-align:center; border:2px solid #2a5298; border-radius:8px; background: #f0f4ff; }
+    .delete-score { background:#e74c3c; padding:6px 8px; border-radius:6px; color:white; border:none; cursor:pointer; }
+    .delete-score:hover { opacity:0.9; }
     .ranking-table { width: 100%; border-collapse: collapse; margin: 16px; }
     .ranking-table th, .ranking-table td { border:1px solid #ddd; padding:8px; text-align:center; }
     .ranking-table th { background:#4caf50; color:#fff; }
@@ -39,7 +41,7 @@
 <body>
 
 <header>
-  <div id="appTitle">🎾テニス組合せ＆ランキング管理 v2.1.2🎾</div>
+  <div id="appTitle">🎾WTC🎾 テニス組合せ＆ランキング管理 v1.2</div>
   <div id="roomInfo">部屋: <span id="roomIdDisplay">---</span> &nbsp; <button class="small" onclick="copyRoomLink()">リンクをコピー</button></div>
 </header>
 
@@ -89,7 +91,6 @@
 
 <!-- ---- 先に roomId を用意（非 module） ---- -->
 <script>
-  // ルームIDの取得 / 自動生成（モジュールより先に実行）
   (function(){
     function randomId(len = 8){
       const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
@@ -101,84 +102,75 @@
     const params = new URLSearchParams(window.location.search);
     let rid = params.get("room");
     if(!rid){
-      // 自動生成してURLを書き換え（初回）
       rid = "r-" + randomId(6);
       params.set("room", rid);
       const newUrl = location.pathname + "?" + params.toString();
       history.replaceState({}, "", newUrl);
     }
     window.roomId = String(rid);
-    // 画面上に反映（ヘッダーは DOM 準備後に更新するため、global に入れる）
   })();
 </script>
 
-<!-- ---- メイン UI / ロジック（module の前に使うので window.roomId が使える） ---- -->
+<!-- ---- メイン UI / ロジック ---- -->
 <script>
-  // -------------------------
-  // UI / アプリ本体（非 firebase 部分）
-  // -------------------------
   let members = [];
 
-function loadFromFirebase(state){
-  members = state.members || [];
-  players = state.players || [];
-  schedule = state.schedule || [];
-  showingRounds = state.showingRounds || 10;
+  // Firebaseから来るロード用（モジュール側に合わせる）
+  function loadFromFirebase(state){
+    members = state.members || [];
+    players = state.players || [];
+    schedule = state.schedule || [];
+    showingRounds = state.showingRounds || 10;
 
-  renderMembers();
-  render();
-  updateRanking();
-}
-window.loadFromFirebase = loadFromFirebase;
+    renderMembers();
+    render();
+    updateRanking();
+  }
+  window.loadFromFirebase = loadFromFirebase;
 
   let players = [];
   let schedule = [];
   let showingRounds = 10;
 
-  // localStorage key per room
-
- function loadMembers(){
-  members = [];
-  renderMembers();
-}
-
-function saveMembers(){
-  if(window.saveStateToFirebase){
-    window.saveStateToFirebase({ members, players, schedule, showingRounds });
+  function loadMembers(){
+    members = [];
+    renderMembers();
   }
-}
 
-function renderMembers(){
-  const list = document.getElementById("memberList");
-  list.innerHTML = "";
-  members.forEach((m,i)=>{
-    list.innerHTML += `
-      <div class="member-item">
-        ${m}
-        <button onclick="deleteMember(${i})">削除</button>
-      </div>`;
-  });
-  renderMemberButtons();
-}
+  function saveMembers(){
+    if(window.saveStateToFirebase){
+      window.saveStateToFirebase({ members, players, schedule, showingRounds });
+    }
+  }
 
-function addMember(){
-  const name = document.getElementById("newMember").value.trim();
-  if(!name) return;
+  function renderMembers(){
+    const list = document.getElementById("memberList");
+    list.innerHTML = "";
+    members.forEach((m,i)=>{
+      list.innerHTML += `
+        <div class="member-item">
+          ${m}
+          <button onclick="deleteMember(${i})">削除</button>
+        </div>`;
+    });
+    renderMemberButtons();
+  }
 
-  members.push(name);
-  document.getElementById("newMember").value = "";
+  function addMember(){
+    const name = document.getElementById("newMember").value.trim();
+    if(!name) return;
+    members.push(name);
+    document.getElementById("newMember").value = "";
+    saveMembers();
+    renderMembers();
+  }
 
-  saveMembers();
-  renderMembers();
-}
+  function deleteMember(i){
+    members.splice(i,1);
+    saveMembers();
+    renderMembers();
+  }
 
-function deleteMember(i){
-  members.splice(i,1);
-  saveMembers();
-  renderMembers();
-}
-
-  // 画面切替
   function showRegister(){
     document.getElementById("menu").classList.add("hidden");
     document.getElementById("register").classList.remove("hidden");
@@ -194,7 +186,6 @@ function deleteMember(i){
     document.getElementById("menu").classList.remove("hidden");
   }
 
-  // playerCount options
   for(let i=4;i<=20;i++){
     const opt = document.createElement("option");
     opt.value = i; opt.text = i+"人";
@@ -252,7 +243,6 @@ function deleteMember(i){
     }
   }
 
-  // 組合せロジック（元コードそのまま）
   const template4 = [
     [[1,2],[3,4]],
     [[1,3],[2,4]],
@@ -269,7 +259,6 @@ function deleteMember(i){
   ];
 
   function generate(){
-    // プレイヤー準備
     players = [];
     const count = parseInt(document.getElementById("playerCount").value);
     for(let i=1;i<=count;i++){
@@ -283,7 +272,6 @@ function deleteMember(i){
     const court = parseInt(document.getElementById("courtCount").value);
     const restNeeded = players.length - court*4;
 
-    // ラウンド生成
     for(let r=0;r<20;r++){
       const sorted = [...players].sort((a,b) => {
         if(a.restCount !== b.restCount) return a.restCount - b.restCount;
@@ -310,56 +298,81 @@ function deleteMember(i){
         if(!tA || !tB) break;
         const team1 = [ play[tA[0]-1], play[tA[1]-1] ];
         const team2 = [ play[tB[0]-1], play[tB[1]-1] ];
-        matches.push({ team1, team2, score:[0,0] });
+        // 初期は null（未入力）にする
+        matches.push({ team1, team2, score:[null,null] });
       }
       schedule.push({ matches });
     }
 
     render();
 
-    // Firebase に保存（module 側で window.saveStateToFirebase を提供）
     if(window.saveStateToFirebase) {
-     window.saveStateToFirebase({ members, players, schedule, showingRounds }).catch(e => console.warn("save error", e));
+      // members を必ず含める（上書きされるので）
+      window.saveStateToFirebase({ members, players, schedule, showingRounds }).catch(e => console.warn("save error", e));
     }
   }
 
-  // 表示ロジック（ほぼ元のまま）
   function render(){
     const matchesDiv = document.getElementById("matches");
     matchesDiv.innerHTML = "";
     schedule.forEach((round, i) => {
       if(i >= showingRounds) return;
-      const card = document.createElement("div");
-      card.className = "match-card";
+      const card = document.createElement('div');
+      card.className = 'match-card';
       const bgColors = ["#e3f2fd","#fff3e0","#e8f5e9","#fce4ec"];
       card.style.background = bgColors[i % bgColors.length];
       card.innerHTML = `<div class="match-title">🏆 MATCH ${(i+1).toString().padStart(2,'0')}</div>`;
       card.innerHTML += `<div class="court-name">【コートA】</div>`;
       const m = round.matches;
-      card.innerHTML += `
-        <div class="pair-row">
-          <div class="pair">${m[0].team1[0].name} ＆ ${m[0].team1[1].name}</div>
-          <input class="score" type="number" min="0" max="9" onchange="score(${i},0,0,this.value)">
-        </div>
-        <div class="vs">vs</div>
-        <div class="pair-row">
-          <div class="pair">${m[0].team2[0].name} ＆ ${m[0].team2[1].name}</div>
-          <input class="score" type="number" min="0" max="9" onchange="score(${i},0,1,this.value)">
-        </div>`;
+      // --- コートA ---
+      if(m[0]){
+        card.innerHTML += `
+          <div class="pair-row">
+            <div class="pair">${m[0].team1[0].name} ＆ ${m[0].team1[1].name}</div>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <div class="score-display" id="disp-${i}-0-0">${renderScoreText(m[0].score && m[0].score[0])}</div>
+              <input class="score-input" id="input-${i}-0-0" type="number" min="0" max="99" value="${renderScoreValue(m[0].score && m[0].score[0])}" onchange="setScore(${i},0,0,this.value)">
+              <button class="delete-score" onclick="deleteScore(${i},0,0)">削除</button>
+            </div>
+          </div>
+          <div class="vs">vs</div>
+          <div class="pair-row">
+            <div class="pair">${m[0].team2[0].name} ＆ ${m[0].team2[1].name}</div>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <div class="score-display" id="disp-${i}-0-1">${renderScoreText(m[0].score && m[0].score[1])}</div>
+              <input class="score-input" id="input-${i}-0-1" type="number" min="0" max="99" value="${renderScoreValue(m[0].score && m[0].score[1])}" onchange="setScore(${i},0,1,this.value)">
+              <button class="delete-score" onclick="deleteScore(${i},0,1)">削除</button>
+            </div>
+          </div>
+        `;
+      }
+
       card.innerHTML += `<hr>`;
-      if(m.length > 1){
+
+      // --- コートB （ある場合） ---
+      if(m.length > 1 && m[1]){
         card.innerHTML += `<div class="court-name">【コートB】</div>`;
         card.innerHTML += `
           <div class="pair-row">
             <div class="pair">${m[1].team1[0].name} ＆ ${m[1].team1[1].name}</div>
-            <input class="score" type="number" min="0" max="9" onchange="score(${i},1,0,this.value)">
+            <div style="display:flex; gap:8px; align-items:center;">
+              <div class="score-display" id="disp-${i}-1-0">${renderScoreText(m[1].score && m[1].score[0])}</div>
+              <input class="score-input" id="input-${i}-1-0" type="number" min="0" max="99" value="${renderScoreValue(m[1].score && m[1].score[0])}" onchange="setScore(${i},1,0,this.value)">
+              <button class="delete-score" onclick="deleteScore(${i},1,0)">削除</button>
+            </div>
           </div>
           <div class="vs">vs</div>
           <div class="pair-row">
             <div class="pair">${m[1].team2[0].name} ＆ ${m[1].team2[1].name}</div>
-            <input class="score" type="number" min="0" max="9" onchange="score(${i},1,1,this.value)">
-          </div>`;
+            <div style="display:flex; gap:8px; align-items:center;">
+              <div class="score-display" id="disp-${i}-1-1">${renderScoreText(m[1].score && m[1].score[1])}</div>
+              <input class="score-input" id="input-${i}-1-1" type="number" min="0" max="99" value="${renderScoreValue(m[1].score && m[1].score[1])}" onchange="setScore(${i},1,1,this.value)">
+              <button class="delete-score" onclick="deleteScore(${i},1,1)">削除</button>
+            </div>
+          </div>
+        `;
       }
+
       matchesDiv.appendChild(card);
     });
 
@@ -373,66 +386,106 @@ function deleteMember(i){
     updateRanking();
   }
 
- function score(roundIndex, matchIndex, team, val){
-  val = parseInt(val);
-  if(isNaN(val)) return;
-
-  const match = schedule[roundIndex].matches[matchIndex];
-
-  if(!match.score) match.score = [0,0];
-  match.score[team] = val;
-
-  updateRanking();
-
-  if(window.saveStateToFirebase){
-    window.saveStateToFirebase({ members, players, schedule, showingRounds });
+  // ユーティリティ：表示テキスト（nullは空文字）
+  function renderScoreText(val){
+    if(val === null || val === undefined) return '';
+    return String(val);
   }
-}
+  // input value（null -> empty string）
+  function renderScoreValue(val){
+    if(val === null || val === undefined) return '';
+    return String(val);
+  }
 
-function updateRanking(){
+  // 入力でスコアをセット（上書き）
+  function setScore(roundIndex, matchIndex, team, rawVal){
+    // rawVal is string from input
+    const match = schedule[roundIndex].matches[matchIndex];
+    if(!match) return;
+    const trimmed = String(rawVal).trim();
+    let newVal = null;
+    if(trimmed !== ''){
+      const n = parseInt(trimmed, 10);
+      if(Number.isFinite(n) && n >= 0){
+        newVal = n;
+      } else {
+        // invalid -> ignore
+        return;
+      }
+    } else {
+      newVal = null;
+    }
+    if(!match.score) match.score = [null,null];
+    match.score[team] = newVal;
 
-  const map = {};
-  players.forEach(p=>{
-    map[p.name] = { total:0, match:0 };
-  });
+    // 保存して再レンダリング（表示欄を更新）
+    updateRanking();
+    if(window.saveStateToFirebase){
+      window.saveStateToFirebase({ members, players, schedule, showingRounds }).catch(e => console.warn("save error", e));
+    }
+    render();
+  }
 
-  schedule.forEach(round=>{
-    round.matches.forEach(match=>{
-      if(!match.score) return;
+  // 削除ボタン（スコアを空にする）
+  function deleteScore(roundIndex, matchIndex, team){
+    const match = schedule[roundIndex].matches[matchIndex];
+    if(!match || !match.score) return;
+    match.score[team] = null;
 
-      const s0 = match.score[0] || 0;
-      const s1 = match.score[1] || 0;
+    updateRanking();
+    if(window.saveStateToFirebase){
+      window.saveStateToFirebase({ members, players, schedule, showingRounds }).catch(e => console.warn("save error", e));
+    }
+    render();
+  }
 
-      match.team1.forEach(p=>{
-        map[p.name].total += s0;
-        map[p.name].match++;
-      });
-      match.team2.forEach(p=>{
-        map[p.name].total += s1;
-        map[p.name].match++;
+  function updateRanking(){
+    // 集計先マップを players から作る
+    const map = {};
+    players.forEach(p=>{
+      map[p.name] = { total:0, match:0 };
+    });
+
+    // schedule の score を見て集計
+    schedule.forEach(round=>{
+      round.matches.forEach(match=>{
+        if(!match.score) return;
+        const s0 = (match.score[0] !== null && match.score[0] !== undefined) ? match.score[0] : null;
+        const s1 = (match.score[1] !== null && match.score[1] !== undefined) ? match.score[1] : null;
+
+        // Aチームが入力されているなら加算（入力されてない＝nullのときは無視）
+        if(s0 !== null){
+          match.team1.forEach(p=>{
+            if(map[p.name]){ map[p.name].total += s0; map[p.name].match++; }
+          });
+        }
+        if(s1 !== null){
+          match.team2.forEach(p=>{
+            if(map[p.name]){ map[p.name].total += s1; map[p.name].match++; }
+          });
+        }
       });
     });
-  });
 
-  const stats = Object.keys(map).map(name=>{
-    const m = map[name];
-    return {
-      name,
-      total: m.total,
-      match: m.match,
-      avg: m.match ? (m.total/m.match) : 0
-    };
-  }).sort((a,b)=>b.avg - a.avg);
+    const stats = Object.keys(map).map(name=>{
+      const m = map[name];
+      return {
+        name,
+        total: m.total,
+        match: m.match,
+        avg: m.match ? (m.total/m.match) : 0
+      };
+    }).sort((a,b)=>b.avg - a.avg);
 
-  let html = `<div class="ranking-card"><h3>🏆 ランキング</h3>`;
-  html += `<table class="ranking-table"><tr><th>順位</th><th>名前</th><th>合計</th><th>試合</th><th>平均</th></tr>`;
-  stats.forEach((p,i)=>{
-    const medal = (i===0?"🥇": i===1?"🥈": i===2?"🥉": "");
-    html += `<tr><td>${medal}${i+1}</td><td>${p.name}</td><td>${p.total}</td><td>${p.match}</td><td>${p.avg.toFixed(2)}</td></tr>`;
-  });
-  html += `</table></div>`;
-  document.getElementById("ranking").innerHTML = html;
-}
+    let html = `<div class="ranking-card"><h3>🏆 ランキング</h3>`;
+    html += `<table class="ranking-table"><tr><th>順位</th><th>名前</th><th>合計</th><th>試合</th><th>平均</th></tr>`;
+    stats.forEach((p,i)=>{
+      const medal = (i===0?"🥇": i===1?"🥈": i===2?"🥉": "");
+      html += `<tr><td>${medal}${i+1}</td><td>${p.name}</td><td>${p.total}</td><td>${p.match}</td><td>${p.avg.toFixed(2)}</td></tr>`;
+    });
+    html += `</table></div>`;
+    document.getElementById("ranking").innerHTML = html;
+  }
 
   function shuffle(arr){
     for(let i=arr.length-1;i>0;i--){
@@ -441,7 +494,6 @@ function updateRanking(){
     }
   }
 
-  // ルーム作成（ボタンから呼ばれる）
   function randomId(len = 8){
     const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
     let s = "";
@@ -453,12 +505,10 @@ function updateRanking(){
     const params = new URLSearchParams(window.location.search);
     params.set("room", newId);
     const newUrl = location.pathname + "?" + params.toString();
-    history.pushState({}, "", newUrl); // push so user can go back
+    history.pushState({}, "", newUrl);
     window.roomId = newId;
     updateRoomDisplay();
-    // notify module to switch subscription
     if(window.setRoom) window.setRoom(newId);
-    // reset local state for new room
     players = [];
     schedule = [];
     showingRounds = 10;
@@ -476,24 +526,21 @@ function updateRanking(){
     });
   }
 
-  // header に部屋表示
   function updateRoomDisplay(){
     const el = document.getElementById("roomIdDisplay");
     if(el) el.textContent = window.roomId || "—";
   }
 
-  // 初期化
   updateRoomDisplay();
   loadMembers();
   setupGuests();
 
-  // エクスポート（必要なら外部から呼べるように）
   window.createRoom = createRoom;
   window.copyRoomLink = copyRoomLink;
   window.updateRoomDisplay = updateRoomDisplay;
 </script>
 
-<!-- ---- Firebase module: 初期化はここで一度だけ。room切り替え用の setRoom 関数を window に公開 ---- -->
+<!-- ---- Firebase module (Firestore) ---- -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js";
   import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js";
@@ -510,19 +557,16 @@ function updateRanking(){
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
 
-  // roomRef は setRoom() で差し替える（モジュールスコープ）
   let roomRef = null;
   let unsubscribe = null;
 
-  // 保存関数（roomRef を参照するためクロージャ）
   async function saveStateToFirebase(state){
     if(!roomRef) return Promise.reject(new Error("roomRef not set"));
     return setDoc(roomRef, state);
   }
 
-  // Firebase の購読を行う
   function subscribeToRoom(rid){
-    if(unsubscribe) unsubscribe(); // 既存購読解除
+    if(unsubscribe) unsubscribe();
     roomRef = doc(db, "rooms", rid);
     unsubscribe = onSnapshot(roomRef, (snapshot)=>{
       if(snapshot.exists()){
@@ -539,28 +583,21 @@ function updateRanking(){
     });
   }
 
-  // window.setRoom を公開。別の部屋に切り替えるときに呼ぶ
   window.setRoom = function(newRoomId){
     console.log("切替 room:", newRoomId);
     subscribeToRoom(newRoomId);
-    // header 表示を更新（UI 側でも呼ばれるが念のため）
     if(window.updateRoomDisplay) window.updateRoomDisplay();
   };
 
-  // 初期購読（window.roomId はページロード時に既にセット済み）
   if(window.roomId){
     subscribeToRoom(window.roomId);
   } else {
-    // もし何かの理由で未セットならデフォルト
     window.roomId = "default";
     subscribeToRoom(window.roomId);
   }
 
-  // window へ公開
   window.saveStateToFirebase = saveStateToFirebase;
 
-  // window.loadFromFirebase は UI 側で定義済み（上のスクリプト）
-  // もし UI 側でまだ定義されていなければ用意する（安全策）
   if(!window.loadFromFirebase){
     window.loadFromFirebase = function(state){
       players = state.players || [];
